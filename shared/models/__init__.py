@@ -26,6 +26,7 @@ from shared.models.document import Document
 from shared.models.document_template import DocumentTemplate
 from shared.models.expat_user import ExpatUser
 from shared.models.external_contact import ExternalContact
+from shared.models.help_search_miss import HelpSearchMiss
 from shared.models.impersonation import ImpersonationLog
 from shared.models.invitation import AgentInvitation, CaseInvitation
 from shared.models.job import JobConfig, JobRun
@@ -92,6 +93,7 @@ __all__ = [
     "CasePerson",
     "ImpersonationLog",
     "AgencyDeletionLog",
+    "HelpSearchMiss",
     "JobConfig",
     "PlatformTask",
     "PlatformTaskAttachment",

@@ -48,6 +48,7 @@ from src.expat.expat_router import router as expat_portal_router
 from src.export.export_router import router as export_router
 from src.external.external_router import agency_router as external_agency_router
 from src.external.external_router import external_router
+from src.help.help_router import router as help_router
 from src.impersonation.impersonation_router import router as impersonation_router
 from src.imports.imports_router import router as imports_router
 from src.jobs.jobs_router import router as jobs_router
@@ -202,6 +203,7 @@ app.include_router(billing_router)
 app.include_router(activity_router)
 app.include_router(activity_stats_router)
 app.include_router(admin_router)
+app.include_router(help_router)
 app.include_router(agencies_router)
 app.include_router(profile_sections_router)
 app.include_router(agencies_public_router)
