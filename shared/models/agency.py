@@ -214,6 +214,7 @@ class Agency(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     utm_source: Mapped[str | None] = mapped_column(String(200))
     utm_medium: Mapped[str | None] = mapped_column(String(200))
     utm_campaign: Mapped[str | None] = mapped_column(String(200))
+    utm_content: Mapped[str | None] = mapped_column(String(200))
     referrer: Mapped[str | None] = mapped_column(String(200))
     # La PREMIÈRE TOUCHE, distincte de created_at : le délai entre l'arrivée
     # sur /signup et la création du compte est un signal en soi. Posée dès

@@ -30,9 +30,13 @@ class AcquisitionFields(BaseModel):
     utm_source: str | None = Field(default=None, max_length=_ACQUISITION_MAX)
     utm_medium: str | None = Field(default=None, max_length=_ACQUISITION_MAX)
     utm_campaign: str | None = Field(default=None, max_length=_ACQUISITION_MAX)
+    # Landing-button attribution (lot 01/09): which CTA/variant converted.
+    utm_content: str | None = Field(default=None, max_length=_ACQUISITION_MAX)
     referrer: str | None = Field(default=None, max_length=_ACQUISITION_MAX)
 
-    @field_validator("utm_source", "utm_medium", "utm_campaign", "referrer", mode="before")
+    @field_validator(
+        "utm_source", "utm_medium", "utm_campaign", "utm_content", "referrer", mode="before"
+    )
     @classmethod
     def _sanitize(cls, v: str | None) -> str | None:
         return _clean_acquisition(v)

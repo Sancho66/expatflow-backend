@@ -44,7 +44,7 @@ from src.signup.signup_schema import (
 # re-demande supprime la vérification précédente, on en RÉCUPÈRE la source
 # avant de la jeter).
 
-_ACQUISITION_FIELDS = ("utm_source", "utm_medium", "utm_campaign", "referrer")
+_ACQUISITION_FIELDS = ("utm_source", "utm_medium", "utm_campaign", "utm_content", "referrer")
 
 
 def _acquisition_of(source: object) -> dict[str, str | None]:

@@ -129,6 +129,7 @@ class AdminManager:
             utm_source=r.utm_source,
             utm_medium=r.utm_medium,
             utm_campaign=r.utm_campaign,
+            utm_content=r.utm_content,
             referrer=r.referrer,
             acquisition_captured_at=r.acquisition_captured_at,
             onboarding=onboarding_gestures(

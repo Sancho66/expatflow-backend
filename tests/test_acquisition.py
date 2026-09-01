@@ -35,6 +35,7 @@ CAMPAIGN = {
     "utm_source": "newsletter",
     "utm_medium": "email",
     "utm_campaign": "lancement-aout",
+    "utm_content": "cta-hero",
     "referrer": "https://www.google.com/",
 }
 
@@ -116,6 +117,7 @@ async def test_the_first_step_carries_the_campaign_all_the_way_to_the_agency(
     assert agency.utm_source == "newsletter"
     assert agency.utm_medium == "email"
     assert agency.utm_campaign == "lancement-aout"
+    assert agency.utm_content == "cta-hero"  # landing-button attribution (lot 01/09)
     assert agency.referrer == "https://www.google.com/"
     # La première touche est datée, et distincte de la création du compte.
     assert agency.acquisition_captured_at is not None
@@ -228,6 +230,7 @@ async def test_the_admin_row_serves_the_source_and_the_contact(
     assert row["utm_source"] == "newsletter"
     assert row["utm_medium"] == "email"
     assert row["utm_campaign"] == "lancement-aout"
+    assert row["utm_content"] == "cta-hero"
     assert row["referrer"] == "https://www.google.com/"
     assert row["acquisition_captured_at"] is not None
     # De quoi RAPPELER : le propriétaire, c'est le premier agent interne.

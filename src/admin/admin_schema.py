@@ -79,6 +79,7 @@ class AdminAgencyRow(BaseModel):
     utm_source: str | None = None
     utm_medium: str | None = None
     utm_campaign: str | None = None
+    utm_content: str | None = None
     referrer: str | None = None
     acquisition_captured_at: datetime | None = None
 

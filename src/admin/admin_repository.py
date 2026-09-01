@@ -186,6 +186,7 @@ class AdminRepository:
             Agency.utm_source,
             Agency.utm_medium,
             Agency.utm_campaign,
+            Agency.utm_content,
             Agency.referrer,
             Agency.acquisition_captured_at,
         )

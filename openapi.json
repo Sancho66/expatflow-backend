@@ -2840,6 +2840,113 @@
         }
       }
     },
+    "/help/search-miss": {
+      "post": {
+        "tags": [
+          "help"
+        ],
+        "summary": "Report Search Miss",
+        "operationId": "report_search_miss_help_search_miss_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HelpSearchMissCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpSearchMissRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/admin/help/search-misses": {
+      "get": {
+        "tags": [
+          "help"
+        ],
+        "summary": "List Search Misses",
+        "operationId": "list_search_misses_admin_help_search_misses_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpSearchMissListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/agencies": {
       "get": {
         "tags": [
@@ -17397,6 +17504,27 @@
         }
       }
     },
+    "/webhooks/resend": {
+      "post": {
+        "tags": [
+          "reminders"
+        ],
+        "summary": "Resend Webhook",
+        "operationId": "resend_webhook_webhooks_resend_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryWebhookAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/message-templates": {
       "get": {
         "tags": [
@@ -19304,6 +19432,17 @@
               }
             ],
             "title": "Utm Campaign"
+          },
+          "utm_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utm Content"
           },
           "referrer": {
             "anyOf": [
@@ -26458,6 +26597,20 @@
         "title": "DeadlineCounter",
         "description": "Resolved days-remaining counter for a step, computed backend-side\nso both faces read the same number. `target_date` is the firm\n`due_at` if set (source=\"deadline\"), else started_at + estimated_days\n(source=\"estimated\"), else null (source=null → no gauge). The\ngreen/orange/red thresholds are a FRONT decision on `days_remaining`\n(negative = overdue)."
       },
+      "DeliveryWebhookAck": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "DeliveryWebhookAck",
+        "description": "Always 200 for a VERIFIED event (Svix stops re-delivering); `status`\nsays what happened: processed | duplicate | ignored — the Paddle ack\ndoctrine, verbatim."
+      },
       "DeprecatedToken": {
         "properties": {
           "token": {
@@ -28836,6 +28989,122 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HelpSearchMissCreate": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "route": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Route"
+          },
+          "lang": {
+            "type": "string",
+            "maxLength": 8,
+            "minLength": 2,
+            "title": "Lang"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query",
+          "route",
+          "lang"
+        ],
+        "title": "HelpSearchMissCreate",
+        "description": "An agent searched the help corpus and got NOTHING. No PII beyond\nthe query text; the actor/tenant come from the token, never the body."
+      },
+      "HelpSearchMissListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HelpSearchMissRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "HelpSearchMissListResponse"
+      },
+      "HelpSearchMissRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "agency_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Agency Id"
+          },
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "route": {
+            "type": "string",
+            "title": "Route"
+          },
+          "lang": {
+            "type": "string",
+            "title": "Lang"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "agency_id",
+          "agent_id",
+          "query",
+          "route",
+          "lang",
+          "created_at"
+        ],
+        "title": "HelpSearchMissRead"
       },
       "ImpersonationTokenResponse": {
         "properties": {
@@ -35259,6 +35528,40 @@
             ],
             "title": "Resolved Recipient"
           },
+          "delivery_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Status"
+          },
+          "delivery_status_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Status At"
+          },
+          "delivery_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Reason"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -36904,6 +37207,18 @@
             ],
             "title": "Utm Campaign"
           },
+          "utm_content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utm Content"
+          },
           "referrer": {
             "anyOf": [
               {
@@ -37035,6 +37350,18 @@
               }
             ],
             "title": "Utm Campaign"
+          },
+          "utm_content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utm Content"
           },
           "referrer": {
             "anyOf": [

@@ -34,6 +34,7 @@ class SignupVerification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # direct) : sans elle, une arrivée nue serait indistinguable d'une
     # inscription d'avant le lot.
     utm_source: Mapped[str | None] = mapped_column(String(200))
+    utm_content: Mapped[str | None] = mapped_column(String(200))
     utm_medium: Mapped[str | None] = mapped_column(String(200))
     utm_campaign: Mapped[str | None] = mapped_column(String(200))
     referrer: Mapped[str | None] = mapped_column(String(200))
