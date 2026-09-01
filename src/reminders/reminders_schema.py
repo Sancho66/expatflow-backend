@@ -203,6 +203,12 @@ class ReminderResponse(BaseModel):
     # Display name (member full_name, principal name, contact name, owner
     # email) — None only when nothing is resolvable (defensive).
     resolved_recipient: str | None = None
+    # Delivery proof (incident Bulgarie 01/09) — DERIVED status: sent |
+    # delivered | bounced | complained, None before SENT. delivery_delayed
+    # keeps "sent" and fills the reason. Reason is the provider's raw text.
+    delivery_status: str | None = None
+    delivery_status_at: datetime | None = None
+    delivery_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -256,3 +262,11 @@ class ReminderBulkApproveResponse(BaseModel):
     # du job auto) : une clé qui n'apparaît que quand elle se déclenche se lit
     # comme une anomalie.
     skipped_step_done: int
+
+
+class DeliveryWebhookAck(BaseModel):
+    """Always 200 for a VERIFIED event (Svix stops re-delivering); `status`
+    says what happened: processed | duplicate | ignored — the Paddle ack
+    doctrine, verbatim."""
+
+    status: str

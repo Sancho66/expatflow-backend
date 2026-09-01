@@ -83,3 +83,24 @@ class Reminder(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Set ONLY by the auto-reminder job (20, 30, …) — NULL for manual
     # reminders. Carries the unique above.
     auto_threshold_days: Mapped[int | None] = mapped_column()
+    # Delivery proof (incident Bulgarie 01/09): the Resend message id,
+    # written at send time. NOT unique — a grouped digest mail is ONE
+    # Resend email shared by every reminder it lists.
+    provider_message_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Raw last delivery event from the Resend webhook (delivered / bounced /
+    # complained / delivery_delayed), its timestamp, and the provider's raw
+    # reason. The API serves the DERIVED `delivery_status` property below.
+    delivery_event: Mapped[str | None] = mapped_column(String(20))
+    delivery_status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivery_reason: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def delivery_status(self) -> str | None:
+        """sent | delivered | bounced | complained — None before SENT.
+        `delivery_delayed` keeps the derived status at "sent": the mail is
+        still in flight, only the reason tells the delay."""
+        if self.status != ReminderStatus.SENT.value:
+            return None
+        if self.delivery_event in ("delivered", "bounced", "complained"):
+            return self.delivery_event
+        return "sent"

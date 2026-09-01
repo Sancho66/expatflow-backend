@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.agent import Agent
@@ -13,8 +13,9 @@ from src.core.i18n import Language
 from src.core.rbac.baseline import RouteBinding
 from src.core.rbac.permissions import Permission
 from src.journeys.journeys_schema import TranslateEstimateResponse, TranslationJobResponse
-from src.reminders.reminders_manager import RemindersManager
+from src.reminders.reminders_manager import RemindersManager, handle_resend_webhook
 from src.reminders.reminders_schema import (
+    DeliveryWebhookAck,
     MessageTemplateCreateRequest,
     MessageTemplateResponse,
     MessageTemplateUpdateRequest,
@@ -41,6 +42,9 @@ router = APIRouter(tags=["reminders"])
 _CREATE = Permission.REMINDER_CREATE
 
 BINDINGS = [
+    # Delivery proof: PUBLIC by audience but cryptographically gated — the
+    # Svix signature IS the auth (the Paddle webhook doctrine, verbatim).
+    RouteBinding("POST", "/webhooks/resend", Audience.PUBLIC),
     # Message templates: reads = tenant reference data; writes = the
     # reminder workers craft them.
     RouteBinding("GET", "/message-templates", Audience.AGENT),
@@ -85,6 +89,20 @@ BINDINGS = [
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 AgentDep = Annotated[Agent, Depends(get_current_agent)]
+
+
+@router.post("/webhooks/resend", response_model=DeliveryWebhookAck)
+async def resend_webhook(request: Request, db: DbDep) -> DeliveryWebhookAck:
+    # The RAW body — the signature covers the exact bytes, never a re-dump.
+    raw = await request.body()
+    status = await handle_resend_webhook(
+        db,
+        raw,
+        svix_id=request.headers.get("svix-id"),
+        svix_timestamp=request.headers.get("svix-timestamp"),
+        svix_signature=request.headers.get("svix-signature"),
+    )
+    return DeliveryWebhookAck(status=status)
 
 
 # --- message templates ------------------------------------------------------------

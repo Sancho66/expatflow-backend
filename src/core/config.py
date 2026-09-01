@@ -168,6 +168,9 @@ class Settings(BaseSettings):
 
     # Resend transactional email (invitations + mail reminders).
     resend_api_key: str | None = None
+    # Svix secret (whsec_…) of the Resend webhook endpoint — delivery proof
+    # (incident Bulgarie 01/09). None = webhook answers 401, nothing breaks.
+    resend_webhook_secret: str | None = None
     email_from: str = "Nidria <no-reply@nidria.com>"
 
     # Supabase Storage — documents bucket. `supabase_service_role_key`

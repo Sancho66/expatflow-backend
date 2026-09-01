@@ -367,21 +367,24 @@ def dispatch_due_reminders(db: Session, *, log: LogFn, dry_run: bool = False) ->
             )
         # L'expéditeur AFFICHÉ est l'agence : le client reconnaît son
         # interlocuteur (même correction que sur les invitations, 14/08).
-        send_email(
+        mid = send_email(
             to, content.subject, content.text, content.html, sender=sender_as_agency(agency.name)
         )
         emails += 1
         extra = {"grouped": len(members)} if len(members) > 1 else {}
         for member in members:
+            # ONE digest mail = ONE Resend id shared by every listed reminder.
+            member.provider_message_id = mid
             _record(member, dict(extra))
         if len(members) > 1:
             log(f"grouped {len(members)} reminders into one mail to {to}")
 
     for reminder, to, content, extra, agency_name in solo:
-        send_email(
+        mid = send_email(
             to, content.subject, content.text, content.html, sender=sender_as_agency(agency_name)
         )
         emails += 1
+        reminder.provider_message_id = mid
         _record(reminder, extra)
 
     for reminder in silent:

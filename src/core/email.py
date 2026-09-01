@@ -122,18 +122,21 @@ def send_email(
     *,
     sender: str | None = None,
     reply_to: str | None = None,
-) -> None:
+) -> str | None:
     """Transactional email, multipart when `html` is given (text part is
     the fallback). Mocked by default (MOCK_SERVICES / MOCK_EMAIL): logs +
     appends to `outbox` instead of calling Resend. Blocking — call via
     asyncio.to_thread from async code.
+
+    Returns the provider message id (the delivery-proof handle — mock ids
+    are `mock-N`), or None when the mail was suppressed (demo recipient).
 
     `sender`/`reply_to` override the transactional From for BRAND mails
     (nurture: eric@nidria.com, same verified Resend domain — Cloudflare
     routes the replies to Eric's real inbox)."""
     if is_demo_recipient(to):
         logger.info("demo recipient, email suppressed to=%s subject=%r", to, subject)
-        return
+        return None
     if _is_mocked():
         logger.info("MOCK email to=%s subject=%r", to, subject)
         outbox.append(
@@ -141,7 +144,7 @@ def send_email(
                 to=to, subject=subject, body=body, html=html, sender=sender, reply_to=reply_to
             )
         )
-        return
+        return f"mock-{len(outbox)}"
     settings = get_settings()
     resend.api_key = settings.resend_api_key
     payload: dict[str, object] = {
@@ -160,3 +163,4 @@ def send_email(
     # "mail never arrived" report is undiagnosable server-side.
     message_id = response.get("id") if isinstance(response, dict) else response
     logger.info("email sent via resend id=%s to=%s subject=%r", message_id, to, subject)
+    return str(message_id) if message_id is not None else None

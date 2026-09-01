@@ -24,7 +24,12 @@ from src.core.enums import (
     ReminderStatus,
     StepStatus,
 )
-from src.core.exceptions import ConflictError, NotFoundError, ValidationError
+from src.core.exceptions import (
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
 from src.core.i18n import (
     apply_i18n_write,
     format_date_for_lang,
@@ -945,3 +950,78 @@ class RemindersManager:
         await self.db.commit()
         await self.db.refresh(reminder)
         return reminder
+
+
+# --- Resend delivery webhook (delivery proof, incident Bulgarie 01/09) ----------------
+
+_DELIVERY_EVENTS = ("delivered", "bounced", "complained", "delivery_delayed")
+
+
+async def handle_resend_webhook(
+    db: AsyncSession,
+    raw_body: bytes,
+    *,
+    svix_id: str | None,
+    svix_timestamp: str | None,
+    svix_signature: str | None,
+) -> str:
+    """Returns the ack status: processed | duplicate | ignored.
+
+    The Paddle webhook doctrine, verbatim: signature on the RAW bytes (401
+    without it, nothing written), then ALWAYS 200 for a verified event —
+    an unknown type, an unmatched message id or a malformed payload is
+    LOGGED and ignored, never a 500 (a 4xx/5xx would make Svix re-deliver
+    forever). Idempotence is value-based: replaying the same event finds
+    the row already carrying (event, timestamp) and writes nothing."""
+    import json
+
+    from sqlalchemy import select as _select
+
+    from src.reminders.resend_signature import verify_resend_signature
+
+    settings = get_settings()
+    if settings.resend_webhook_secret is None or not verify_resend_signature(
+        raw_body, svix_id, svix_timestamp, svix_signature, settings.resend_webhook_secret
+    ):
+        raise UnauthorizedError("Invalid Resend signature.")
+    try:
+        envelope = json.loads(raw_body)
+        event_type = str(envelope["type"])
+        occurred_at = datetime.fromisoformat(str(envelope["created_at"]).replace("Z", "+00:00"))
+        data = envelope["data"]
+        email_id = str(data["email_id"])
+    except Exception:  # noqa: BLE001 — a shape we don't know must not bounce forever
+        logger.warning("resend webhook: malformed payload, ignored (%d bytes)", len(raw_body))
+        return "ignored"
+    kind = event_type.removeprefix("email.")
+    if kind not in _DELIVERY_EVENTS:
+        logger.info("resend webhook: event %s ignored", event_type)
+        return "ignored"
+    # The provider's raw reason, verbatim — bounce/complaint sub-block when
+    # Resend sends one (never invented).
+    block = data.get("bounce") or data.get("failed") or data.get("complaint")
+    reason = json.dumps(block, ensure_ascii=False) if block else None
+
+    rows = (
+        (await db.execute(_select(Reminder).where(Reminder.provider_message_id == email_id)))
+        .scalars()
+        .all()
+    )
+    if not rows:
+        logger.warning("resend webhook: %s for unknown message id %s, ignored", kind, email_id)
+        return "ignored"
+    written = 0
+    for reminder in rows:
+        if reminder.delivery_status_at is not None:
+            if reminder.delivery_event == kind and reminder.delivery_status_at == occurred_at:
+                continue  # exact replay — a clean no-op
+            if occurred_at < reminder.delivery_status_at:
+                continue  # older than what we hold — chronology wins
+        reminder.delivery_event = kind
+        reminder.delivery_status_at = occurred_at
+        reminder.delivery_reason = reason
+        written += 1
+    if written:
+        await db.commit()
+        return "processed"
+    return "duplicate"
