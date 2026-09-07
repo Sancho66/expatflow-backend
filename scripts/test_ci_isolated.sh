@@ -6,7 +6,14 @@ readonly test_user=nidria-tests
 sudo useradd --system --create-home "$test_user"
 readonly test_uid="$(id -u "$test_user")"
 sudo usermod -aG docker "$test_user"
-sudo chown -R "$test_user" .
+# The runner's home is private. Relocate the existing code/venv without
+# granting the test account access to runner credentials or installing anything.
+readonly test_root="$(mktemp -d /tmp/nidria-tests.XXXXXX)"
+trap 'sudo rm -rf -- "$test_root"' EXIT
+tar --exclude='./.git' --exclude='./.env*' -cf - . | tar -xf - -C "$test_root"
+sudo chown -R "$test_user" "$test_root"
+sudo chmod 755 "$test_root"
+cd "$test_root"
 # Dependencies and image acquisition finish BEFORE the test process exists.
 docker pull postgres:16-alpine
 for firewall in iptables ip6tables; do
