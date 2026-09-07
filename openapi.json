@@ -37288,18 +37288,13 @@
             "title": "Referral Code"
           },
           "sectors": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sectors"
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Sectors",
+            "description": "At least one agency sector, chosen during signup and stored at creation."
           }
         },
         "additionalProperties": false,
@@ -37309,7 +37304,8 @@
           "agency_name",
           "first_name",
           "last_name",
-          "password"
+          "password",
+          "sectors"
         ],
         "title": "SignupCompleteRequest"
       },

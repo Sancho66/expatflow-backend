@@ -52,7 +52,7 @@ async def _verify(client: AsyncClient, email: str = "neo@agence.io", code: str =
     return await client.post("/signup/verify", json={"email": email, "code": code})
 
 
-async def _complete(client: AsyncClient, token: str, **overrides):
+async def _complete(client: AsyncClient, token: str, *, omit_sectors: bool = False, **overrides):
     payload = {
         "completion_token": token,
         "agency_name": "Neo Agence",
@@ -63,8 +63,8 @@ async def _complete(client: AsyncClient, token: str, **overrides):
         "sectors": ["legal"],  # chosen in the form (mandatory)
     }
     payload.update(overrides)
-    if payload.get("sectors") is None:
-        payload.pop("sectors", None)  # None → omit the key entirely
+    if omit_sectors:
+        payload.pop("sectors")  # Preserve explicit null as a distinct request case.
     return await client.post("/signup/complete", json=payload)
 
 
@@ -94,9 +94,7 @@ async def test_full_flow_creates_everything_and_logs_in(
     ).scalar_one()
     assert agency.slug == "neo-agence"
     assert agency.trial_ends_at is not None and agency.referral_code.startswith("NID-")
-    # Self-signup defers the sector choice: born with [] AND flagged so the
-    # front shows the blocking sector-onboarding screen. THIS is the only
-    # path that poses the flag true.
+    # Sector choice is completed in the form, before the agency is created.
     assert agency.sectors == ["legal"]  # chosen in the form, written atomically
     assert agency.sectors_onboarding_required is False  # no post-signup wall
     # NID-16a: signup poses a currency too (fr → EUR) — never NULL, so a
@@ -331,20 +329,47 @@ async def test_nurture_skips_non_french_agencies(
 # --- sectors mandatory & atomic at signup (2026-07-21) --------------------------------
 
 
-async def test_signup_complete_without_sectors_is_422(client: AsyncClient) -> None:
-    assert (await _request(client)).status_code == 200
-    token = (await _verify(client)).json()["completion_token"]
-    resp = await _complete(client, token, sectors=None)  # omitted entirely
+@pytest.mark.parametrize(
+    ("omit_sectors", "sectors", "error_type"),
+    [
+        pytest.param(True, None, "missing", id="absent"),
+        pytest.param(False, None, "list_type", id="null"),
+        pytest.param(False, [], "too_short", id="empty"),
+    ],
+)
+@pytest.mark.parametrize("valid_token", [True, False], ids=["valid-token", "invalid-token"])
+async def test_signup_complete_requires_nonempty_sectors(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    omit_sectors: bool,
+    sectors: list[str] | None,
+    error_type: str,
+    valid_token: bool,
+) -> None:
+    token = "A" * 43
+    if valid_token:
+        assert (await _request(client)).status_code == 200
+        token = (await _verify(client)).json()["completion_token"]
+    resp = await _complete(client, token, omit_sectors=omit_sectors, sectors=sectors)
     assert resp.status_code == 422
-    assert "signup.sectors_required" in resp.text
-
-
-async def test_signup_complete_empty_sectors_is_422(client: AsyncClient) -> None:
-    assert (await _request(client)).status_code == 200
-    token = (await _verify(client)).json()["completion_token"]
-    resp = await _complete(client, token, sectors=[])
-    assert resp.status_code == 422
-    assert "signup.sectors_required" in resp.text
+    # Structural validation now precedes the manager, including token checks.
+    body = resp.json()
+    assert "code" not in body
+    assert len(body["detail"]) == 1
+    assert body["detail"][0]["loc"] == ["body", "sectors"]
+    assert body["detail"][0]["type"] == error_type
+    assert (await db_session.execute(select(Agency))).scalars().all() == []
+    assert (await db_session.execute(select(Agent))).scalars().all() == []
+    if valid_token:
+        verification = (
+            await db_session.execute(
+                select(SignupVerification).where(SignupVerification.completion_token == token)
+            )
+        ).scalar_one()
+        assert verification.completion_token == token
+        # Rejection does not consume the token: a corrected submission succeeds.
+        retry = await _complete(client, token, sectors=["legal"])
+        assert retry.status_code == 200, retry.text
 
 
 async def test_signup_complete_invalid_sector_is_422(client: AsyncClient) -> None:
@@ -352,7 +377,11 @@ async def test_signup_complete_invalid_sector_is_422(client: AsyncClient) -> Non
     token = (await _verify(client)).json()["completion_token"]
     resp = await _complete(client, token, sectors=["banking"])  # not in the enum
     assert resp.status_code == 422
-    assert "agency.sector_invalid" in resp.text
+    body = resp.json()
+    assert body["code"] == "agency.sector_invalid"
+    assert body["params"]["sector"] == "banking"
+    assert "legal" in body["params"]["allowed"]
+    assert isinstance(body["detail"], str)  # Business error envelope is unchanged.
 
 
 async def test_signup_invalid_sector_creates_no_orphan_agency(
@@ -388,7 +417,9 @@ async def test_signup_unknown_field_is_422_not_swallowed(client: AsyncClient) ->
     assert resp.status_code == 422  # extra=forbid bites — no silent swallow
 
 
-async def test_signup_and_complete_have_sector_parity(client: AsyncClient) -> None:
+async def test_signup_and_complete_have_sector_parity(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     """Parity: /signup does NOT create an agency (stage 1, no sectors), and
     /signup/complete is the single self-serve creation point where sectors
     are mandatory + atomic (already covered above)."""
@@ -400,5 +431,32 @@ async def test_signup_and_complete_have_sector_parity(client: AsyncClient) -> No
     # The full flow WITHOUT the stray field works and persists sectors.
     assert (await _request(client, email="parity2@example.com")).status_code == 200
     token = (await _verify(client, email="parity2@example.com")).json()["completion_token"]
-    ok = await _complete(client, token, sectors=["accounting"])
+    ok = await _complete(client, token, sectors=["accounting", "legal", "accounting"])
     assert ok.status_code == 200
+    agency = (await db_session.execute(select(Agency))).scalar_one()
+    assert agency.sectors == ["accounting", "legal"]  # Deduplication stays in the manager.
+
+
+async def test_signup_verify_rejects_sectors(client: AsyncClient) -> None:
+    response = await client.post(
+        "/signup/verify",
+        json={"email": "neo@agence.io", "code": "123456", "sectors": ["legal"]},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "extra_forbidden"
+    assert response.json()["detail"][0]["loc"] == ["body", "sectors"]
+
+
+def test_signup_complete_openapi_requires_nonempty_sectors() -> None:
+    from src.main import app
+
+    schemas = app.openapi()["components"]["schemas"]
+    complete = schemas["SignupCompleteRequest"]
+    assert "sectors" in complete["required"]
+    sectors = complete["properties"]["sectors"]
+    assert sectors["type"] == "array"  # No nullable union or default.
+    assert sectors["minItems"] == 1
+    assert sectors["items"] == {"type": "string"}  # Values remain business-validated.
+    assert "anyOf" not in sectors and "default" not in sectors
+    assert "sectors" not in schemas["SignupRequest"]["properties"]
+    assert "sectors" not in schemas["SignupVerifyRequest"]["properties"]
