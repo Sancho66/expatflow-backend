@@ -689,6 +689,48 @@ async def _activate(client: AsyncClient, agency_id: uuid.UUID) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reject_unmocked_paddle_requests(monkeypatch: pytest.MonkeyPatch):
+    """Fail at teardown even when application best-effort code catches the error."""
+    from src.billing.paddle_client import PaddleClient
+
+    attempts: list[str] = []
+
+    async def reject(*args: Any, **kwargs: Any) -> Any:
+        attempts.append("unmocked Paddle transport")
+        raise AssertionError("Mock the expected Paddle client method before preparation")
+
+    monkeypatch.setattr(PaddleClient, "_request", reject)
+    monkeypatch.setattr(PaddleClient, "_request_page", reject)
+    yield
+    assert not attempts, f"{len(attempts)} unmocked Paddle transport attempts"
+
+
+@pytest.fixture(autouse=True)
+def _mock_subscription_reads(monkeypatch: pytest.MonkeyPatch):
+    """Activation recalculates referral discounts before each test's display read."""
+    from src.billing.paddle_client import PaddleClient
+
+    def subscription(subscription_id: str) -> dict[str, Any]:
+        payload = _sub_payload_with_seats(0)
+        payload["id"] = subscription_id
+        if subscription_id == "sub_789":
+            # The re-subscription scenario switches to the annual agency plan.
+            payload["items"][0]["price"] = {
+                "id": PRICE_IDS["agence_annuel"],
+                "unit_price": {"amount": "169000"},
+            }
+            payload["next_transaction"]["details"]["totals"]["grand_total"] = "169000"
+        return payload
+
+    get_sub = AsyncMock(side_effect=subscription)
+    monkeypatch.setattr(PaddleClient, "get_subscription", get_sub)
+    yield get_sub
+    assert all(
+        call.args[0] in {"sub_123", "sub_conv", "sub_789"} for call in get_sub.await_args_list
+    )
+
+
+@pytest.fixture(autouse=True)
 def _clear_subscription_cache(monkeypatch: pytest.MonkeyPatch):
     from src.billing import billing_manager, paddle_client
 
@@ -759,9 +801,13 @@ async def test_cancel_schedules_period_end_and_resume_erases_it(
     h = agent_headers(admin)
     ends = "2026-08-12T18:59:19Z"
 
-    cancel = AsyncMock(return_value=_paddle_subscription_payload(scheduled_cancel=ends))
+    scheduled = _sub_payload_with_seats(0)
+    scheduled["next_billed_at"] = ends
+    scheduled["current_billing_period"] = {"ends_at": ends}
+    scheduled["scheduled_change"] = {"action": "cancel", "effective_at": ends}
+    cancel = AsyncMock(return_value=scheduled)
     monkeypatch.setattr(paddle_client.PaddleClient, "cancel_subscription_at_period_end", cancel)
-    get_sub = AsyncMock(return_value=_paddle_subscription_payload(scheduled_cancel=ends))
+    get_sub = AsyncMock(return_value=scheduled)
     monkeypatch.setattr(paddle_client.PaddleClient, "get_subscription", get_sub)
 
     cancelled = await client.post("/billing/subscription/cancel", headers=h)
@@ -774,12 +820,15 @@ async def test_cancel_schedules_period_end_and_resume_erases_it(
     assert state["scheduled_cancel_at"].startswith("2026-08-12")
 
     # Resume erases it — the gesture that saves the regrets.
-    resume = AsyncMock(return_value=_paddle_subscription_payload(scheduled_cancel=None))
+    resume = AsyncMock(return_value=_sub_payload_with_seats(0))
     monkeypatch.setattr(paddle_client.PaddleClient, "remove_scheduled_change", resume)
+    push = AsyncMock(return_value={})
+    monkeypatch.setattr(paddle_client.PaddleClient, "update_subscription_items", push)
     resumed = await client.post("/billing/subscription/resume", headers=h)
     assert resumed.status_code == 200, resumed.text
     assert resumed.json()["scheduled_cancel_at"] is None
     resume.assert_awaited_once_with("sub_123")
+    push.assert_not_awaited()
 
 
 async def test_payment_method_update_returns_the_special_transaction(
@@ -1135,12 +1184,18 @@ async def test_disabled_checkout_keeps_management_open_for_a_converted_agency(
     h = agent_headers(admin)
     ends = "2026-08-12T18:59:19Z"
 
-    get_sub = AsyncMock(return_value=_paddle_subscription_payload())
+    scheduled = _sub_payload_with_seats(0)
+    scheduled["next_billed_at"] = ends
+    scheduled["current_billing_period"] = {"ends_at": ends}
+    scheduled["scheduled_change"] = {"action": "cancel", "effective_at": ends}
+    get_sub = AsyncMock(return_value=scheduled)
     monkeypatch.setattr(paddle_client.PaddleClient, "get_subscription", get_sub)
-    cancel = AsyncMock(return_value=_paddle_subscription_payload(scheduled_cancel=ends))
+    cancel = AsyncMock(return_value=scheduled)
     monkeypatch.setattr(paddle_client.PaddleClient, "cancel_subscription_at_period_end", cancel)
-    resume = AsyncMock(return_value=_paddle_subscription_payload(scheduled_cancel=None))
+    resume = AsyncMock(return_value=_sub_payload_with_seats(0))
     monkeypatch.setattr(paddle_client.PaddleClient, "remove_scheduled_change", resume)
+    push = AsyncMock(return_value={})
+    monkeypatch.setattr(paddle_client.PaddleClient, "update_subscription_items", push)
     special = AsyncMock(return_value={"id": "txn_pmu_2"})
     monkeypatch.setattr(
         paddle_client.PaddleClient, "get_payment_method_update_transaction", special
@@ -1152,6 +1207,7 @@ async def test_disabled_checkout_keeps_management_open_for_a_converted_agency(
     assert (await client.post("/billing/subscription/cancel", headers=h)).status_code == 200
     assert (await client.post("/billing/subscription/resume", headers=h)).status_code == 200
     assert (await client.post("/billing/payment-method/update", headers=h)).status_code == 200
+    push.assert_not_awaited()
 
 
 async def test_subscription_state_exposes_the_checkout_flag(
@@ -1225,7 +1281,7 @@ def _sub_payload_with_seats(seat_qty: int) -> dict[str, Any]:
         "current_billing_period": {"ends_at": "2026-08-15T12:00:00Z"},
         "scheduled_change": None,
         "items": items,
-        "next_transaction": {"details": {"totals": {"grand_total": "9900"}}},
+        "next_transaction": {"details": {"totals": {"grand_total": str(9900 + 3500 * seat_qty)}}},
     }
 
 

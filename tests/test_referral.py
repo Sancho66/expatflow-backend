@@ -46,8 +46,14 @@ def referral_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("PADDLE_API_KEY", "test-api-key")
     monkeypatch.setenv("PADDLE_WEBHOOK_SECRET", SECRET)
     monkeypatch.setenv("PADDLE_PRICE_IDS", json.dumps(PRICE_IDS))
+    from src.billing import billing_manager
+
+    billing_manager._SUBSCRIPTION_CACHE.clear()
+    billing_manager._CATALOG_PRICES_CACHE = None
     get_settings.cache_clear()
     yield
+    billing_manager._SUBSCRIPTION_CACHE.clear()
+    billing_manager._CATALOG_PRICES_CACHE = None
     get_settings.cache_clear()
 
 
@@ -85,6 +91,7 @@ def _mock_paddle(
     }
     mocks = {
         "get_subscription": AsyncMock(return_value=sub),
+        "list_prices": AsyncMock(return_value=[]),
         "get_discount": AsyncMock(return_value=discount or {}),
         "create_discount": AsyncMock(return_value={"id": "dsc_new"}),
         "set_subscription_discount": AsyncMock(return_value={}),

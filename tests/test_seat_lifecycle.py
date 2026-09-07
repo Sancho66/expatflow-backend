@@ -299,12 +299,16 @@ async def test_reader_reactivation_rebuys_its_pool_seat(
         email="revenant@example.com",
         seat_type="reader",
     )
+    push = _mock_push(monkeypatch)
     gone = await client.post(f"/agencies/me/members/{returning.id}/deactivate", headers=headers)
     assert gone.status_code == 200, gone.text
     # The departure dropped the pool to 0 (its seat left with it).
     seats = await _seats(client, headers)
     assert seats["reader"] == {"purchased": 0, "used": 0, "free": 0}
-    push = _mock_push(monkeypatch)
+    push.assert_awaited_once()
+    assert push.await_args.kwargs["proration_billing_mode"] == "full_next_billing_period"
+    assert all(item["price_id"] != "pri_seat_reader_m" for item in push.await_args.kwargs["items"])
+    push.reset_mock()
 
     back = await client.post(f"/agencies/me/members/{returning.id}/reactivate", headers=headers)
     assert back.status_code == 204, back.text

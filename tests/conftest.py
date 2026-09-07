@@ -6,6 +6,8 @@
 # override, never through the module-level engine.
 import os
 
+from tests import network_guard  # noqa: F401
+
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://placeholder/placeholder")
 os.environ.setdefault("DATABASE_URL_SYNC", "postgresql+psycopg2://placeholder/placeholder")
 os.environ.setdefault("JWT_AGENT_SECRET", "test-agent-secret")
@@ -88,6 +90,11 @@ pytest_plugins = [
     "tests.plugins.reminder_plugin",
     "tests.plugins.signature_plugin",
 ]
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    if not config.pluginmanager.hasplugin("tests.network_guard"):
+        raise pytest.UsageError("The mandatory network guard must load before collection")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

@@ -291,7 +291,20 @@ async def test_webhook_poses_grace_anchor_and_recovery_lifts_the_lock(
     past_due_since (kept across re-deliveries), the lock falls once the
     grace is consumed, and a recovered payment (activated) clears the
     anchor — writes come back with NO human gesture on our side."""
-    from tests.test_billing_paddle import PRICE_IDS, SECRET, _envelope, _post
+    from unittest.mock import AsyncMock
+
+    from src.billing.paddle_client import PaddleClient
+    from tests.test_billing_paddle import (
+        PRICE_IDS,
+        SECRET,
+        _envelope,
+        _post,
+        _sub_payload_with_seats,
+    )
+
+    # Activation and payment recovery both recalculate referral discounts.
+    get_subscription = AsyncMock(return_value=_sub_payload_with_seats(0))
+    monkeypatch.setattr(PaddleClient, "get_subscription", get_subscription)
 
     monkeypatch.setenv("PADDLE_ENV", "sandbox")
     monkeypatch.setenv("PADDLE_API_KEY", "test-api-key")

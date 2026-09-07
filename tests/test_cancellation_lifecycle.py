@@ -47,8 +47,14 @@ def paddle_settings(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("PADDLE_API_KEY", "test-api-key")
     monkeypatch.setenv("PADDLE_PRICE_IDS", json.dumps(PRICE_IDS))
     monkeypatch.setenv("BILLING_CHECKOUT_ENABLED", "true")
+    from src.billing import billing_manager
+
+    billing_manager._SUBSCRIPTION_CACHE.clear()
+    billing_manager._CATALOG_PRICES_CACHE = None
     get_settings.cache_clear()
     yield
+    billing_manager._SUBSCRIPTION_CACHE.clear()
+    billing_manager._CATALOG_PRICES_CACHE = None
     get_settings.cache_clear()
 
 
@@ -210,8 +216,10 @@ async def test_resume_restores_everything_without_double_billing(
     et, la composition n'ayant pas bougé, ne pousse RIEN — aucune
     re-facturation. (Le rattrapage de quantité, lui, est gravé par les
     tests test_resume_catches_up_a_missed_seat_up/down.)"""
-    from src.billing.billing_manager import BillingManager
+    from src.billing import billing_manager
 
+    billing_manager._SUBSCRIPTION_CACHE.clear()
+    billing_manager._CATALOG_PRICES_CACHE = None
     await _live_subscription(db_session, admin.agency_id)
     live = {
         "id": "sub_cancel_lifecycle",
@@ -224,7 +232,23 @@ async def test_resume_restores_everything_without_double_billing(
     monkeypatch.setattr(
         paddle_client.PaddleClient, "remove_scheduled_change", AsyncMock(return_value=live)
     )
-    monkeypatch.setattr(BillingManager, "_fetch_subscription", AsyncMock(return_value=live))
+    monkeypatch.setattr(
+        paddle_client.PaddleClient, "get_subscription", AsyncMock(return_value=live)
+    )
+    monkeypatch.setattr(
+        paddle_client.PaddleClient,
+        "list_prices",
+        AsyncMock(
+            return_value=[
+                {"id": "pri_base_cab_m", "unit_price": {"amount": "9900", "currency_code": "EUR"}},
+                {"id": "pri_seat_cab_m", "unit_price": {"amount": "3500", "currency_code": "EUR"}},
+                {
+                    "id": "pri_seat_reader_m",
+                    "unit_price": {"amount": "1299", "currency_code": "EUR"},
+                },
+            ]
+        ),
+    )
     push = AsyncMock(return_value={})
     monkeypatch.setattr(paddle_client.PaddleClient, "update_subscription_items", push)
     headers = agent_headers(admin)

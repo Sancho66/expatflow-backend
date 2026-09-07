@@ -62,8 +62,16 @@ def paddle_settings(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("PADDLE_API_KEY", "test-api-key")
     monkeypatch.setenv("PADDLE_PRICE_IDS", json.dumps(PRICE_IDS))
     monkeypatch.setenv("BILLING_CHECKOUT_ENABLED", "true")
+    from src.billing import billing_manager
+
+    # The refusal response may read the catalogue; this fixture has no remote prices.
+    monkeypatch.setattr(paddle_client.PaddleClient, "list_prices", AsyncMock(return_value=[]))
+    billing_manager._SUBSCRIPTION_CACHE.clear()
+    billing_manager._CATALOG_PRICES_CACHE = None
     get_settings.cache_clear()
     yield
+    billing_manager._SUBSCRIPTION_CACHE.clear()
+    billing_manager._CATALOG_PRICES_CACHE = None
     get_settings.cache_clear()
 
 
