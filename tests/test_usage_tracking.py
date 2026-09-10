@@ -4,7 +4,7 @@ Covers: (a) a representative emitter per domain writes its typed event;
 (b) first_at is immutable, count increments; (c) replay rebuilds the
 same aggregate; (d) backfill poses real-dated milestones on a pre-tracker
 agency and re-running is a no-op; (e) demo cases emit NOTHING anywhere;
-(f) S0 → S1 → S2 on a full scenario; (g) the wizard starts the 30-day
+(f) S0 → S1 → S2 on a full scenario; (g) the wizard starts the 15-day
 trial and emits agency.activated."""
 
 import uuid
@@ -71,6 +71,7 @@ async def test_wizard_starts_trial_and_emits_activation(
     agent_headers: AuthHeaders,
 ) -> None:
     superadmin = await make_agent(role=system_roles["superadmin"])
+    earliest_trial_end = datetime.now(UTC) + timedelta(days=15)
     created = await client.post(
         "/agencies",
         headers=agent_headers(superadmin),
@@ -86,9 +87,16 @@ async def test_wizard_starts_trial_and_emits_activation(
     agency_id = uuid.UUID(created.json()["agency"]["id"])
     agency = await db_session.get(Agency, agency_id)
     assert agency is not None and agency.trial_ends_at is not None
-    lifetime = agency.trial_ends_at - datetime.now(UTC)
-    assert timedelta(days=29) < lifetime < timedelta(days=31)
+    assert earliest_trial_end <= agency.trial_ends_at <= datetime.now(UTC) + timedelta(days=15)
     assert "agency.activated" in await _events(db_session, agency_id)
+    activation = (
+        await db_session.execute(
+            select(UsageEvent).where(
+                UsageEvent.agency_id == agency_id, UsageEvent.event_type == "agency.activated"
+            )
+        )
+    ).scalar_one()
+    assert activation.details["trial_days"] == 15
     assert "agence_activee" in await _milestones(db_session, agency_id)
 
 

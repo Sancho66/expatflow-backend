@@ -390,12 +390,15 @@ class AgenciesManager:
         # Usage trackers: the creation starts the trial clock and emits
         # the adoption anchor event (actor = the wizard's superadmin, or
         # the self-serve admin themselves).
-        agency.trial_ends_at = datetime.now(UTC) + timedelta(days=get_settings().trial_days)
+        trial_days = get_settings().trial_days
+        agency.trial_ends_at = datetime.now(UTC) + timedelta(days=trial_days)
         await UsageManager(self.db).emit(
             agency_id=agency.id,
             event_type="agency.activated",
             actor_type=ActorType.AGENT,
             actor_id=event_actor_id if event_actor_id is not None else admin.id,
+            # Preserve the initial calendar when an admin later extends the trial.
+            details={"trial_days": trial_days},
         )
         return agency, admin, admin_role
 

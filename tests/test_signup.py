@@ -17,6 +17,7 @@ from shared.models.agency import Agency
 from shared.models.agent import Agent
 from shared.models.rbac import Role
 from shared.models.signup import SignupVerification
+from shared.models.usage import UsageEvent
 from src.core import ratelimit
 from tests.plugins.agent_plugin import MakeAgent
 
@@ -82,18 +83,27 @@ async def test_full_flow_creates_everything_and_logs_in(
     token = verified.json()["completion_token"]
     assert len(token) >= 16
 
+    earliest_trial_end = datetime.now(UTC) + timedelta(days=15)
     done = await _complete(client, token)
     assert done.status_code == 200, done.text
     pair = done.json()
     assert pair["access_token"] and pair["refresh_token"]
 
-    # TOUT est la, comme au wizard : agence en essai 30 j, code de
-    # parrainage propre, admin au bon mot de passe, dossier demo.
+    # Same as the wizard: a 15-day trial, referral code, admin and demo case.
     agency = (
         await db_session.execute(select(Agency).where(Agency.name == "Neo Agence"))
     ).scalar_one()
     assert agency.slug == "neo-agence"
     assert agency.trial_ends_at is not None and agency.referral_code.startswith("NID-")
+    assert earliest_trial_end <= agency.trial_ends_at <= datetime.now(UTC) + timedelta(days=15)
+    activation = (
+        await db_session.execute(
+            select(UsageEvent).where(
+                UsageEvent.agency_id == agency.id, UsageEvent.event_type == "agency.activated"
+            )
+        )
+    ).scalar_one()
+    assert activation.details["trial_days"] == 15
     # Sector choice is completed in the form, before the agency is created.
     assert agency.sectors == ["legal"]  # chosen in the form, written atomically
     assert agency.sectors_onboarding_required is False  # no post-signup wall

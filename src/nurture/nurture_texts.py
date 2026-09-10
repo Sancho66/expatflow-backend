@@ -1,12 +1,10 @@
-"""The 9 trial-nurture mails — Eric's draft v4 (2026-07-03), VERBATIM.
+"""The 9 trial-nurture mails, based on Eric's draft v4 (2026-07-03).
 
-Source: "Mails cron essai (nurture) - draft.md". The texts follow Eric's
-hardened rules (no em-dash, no AI tics, a different angle per mail) and
-are NOT to be rewritten here — only the {Prénom} and booking placeholders
-are interpolated at send time. ONE deliberate, ticket-approved deviation:
-the J+28 "{créneau 1} ou {créneau 2}" slots become a booking-link
-sentence ("réserve le créneau qui t'arrange : {booking_url}"), the
-minimal rewording that lets the mail carry a link instead of dated slots.
+Source: "Mails cron essai (nurture) - draft.md". Keep the original angles,
+no em-dash and the approved booking-link substitution. On 2026-09-10 the
+trial changed to 15 days: final subjects/bodies now invite a trial review,
+without claiming a fixed duration or an imminent expiry after an extension.
+Historical day keys remain stable ledger slot identifiers.
 
 FR only for now (Eric writes in FR, his current prospects are FR); the
 send ledger records lang so translations can pick up later."""
@@ -62,7 +60,7 @@ NURTURE_MAILS: dict[tuple[str, str], NurtureMail] = {
         body=(
             "Salut {Prénom},\n"
             "\n"
-            "Ton mois d'essai se termine. Si tu veux, je te réserve vingt minutes pour te "
+            "On fait le point sur ton essai. Si tu veux, je te réserve vingt minutes pour te "
             "montrer Nidria sur un cas comme les tiens, réserve le créneau qui t'arrange : "
             "{booking_url}, et je te rouvre le temps de tester pour de vrai.\n"
             "\n"
@@ -100,11 +98,11 @@ NURTURE_MAILS: dict[tuple[str, str], NurtureMail] = {
         ),
     ),
     ("S1", "j28"): NurtureMail(
-        subject="ton mois se termine",
+        subject="on fait le point sur ton essai",
         body=(
             "Salut {Prénom},\n"
             "\n"
-            "Ton mois d'essai arrive au bout. Si tu veux, on prend quinze minutes ensemble sur "
+            "On fait le point sur ton essai. Si tu veux, on prend quinze minutes ensemble sur "
             "un de tes dossiers, j'y mets un client avec toi, et tu vois en direct ce que ça "
             "change sur tes relances. Tu décides après.\n"
             "\n"
@@ -144,11 +142,11 @@ NURTURE_MAILS: dict[tuple[str, str], NurtureMail] = {
         ),
     ),
     ("S2", "j28"): NurtureMail(
-        subject="ton mois se termine, on en parle ?",
+        subject="ton essai, on en parle ?",
         body=(
             "Salut {Prénom},\n"
             "\n"
-            "Ton mois d'essai se termine dans quelques jours. Avant de parler de la suite, je "
+            "On fait le point sur ton essai. Avant de parler de la suite, je "
             "veux ton avis vrai : ce dossier partagé avec ton client, ça t'a fait gagner du "
             "temps, ou tu attendais mieux ?\n"
             "\n"

@@ -4,7 +4,9 @@ src/core/job_wrapper.run_job like the reminder jobs.
 For every agency IN TRIAL it computes days elapsed since activation
 (the `agence_activee` milestone, i.e. the moment the wizard posed the
 trial) plus the LIVE usage state (S0/S1/S2, demo excluded), and sends
-the calendar mail: J+7, J+21, J+28. Rules:
+the calendar mail: J+3, J+10, J+13 for new 15-day trials. Agencies
+without that initial duration in their activation event retain J+7/J+21/J+28.
+The historical day keys identify slots, not their current send days. Rules:
 
 - STRICT dedup on (agency, day_key): a slot fires once, whatever the
   state was. S0→S1 between mails ⇒ the agency gets s0_j7 THEN s1_j21
@@ -14,11 +16,11 @@ the calendar mail: J+7, J+21, J+28. Rules:
   are due, only the MOST RECENT one is sent, the older ones are marked
   skipped. A slot more than CATCHUP_WINDOW_DAYS past due is skipped
   too (a J+7 mail landing at J+40 would be worse than silence).
-- J+28 carries Eric's booking link: while NURTURE_BOOKING_URL is empty
-  the slot is held as pending_config (a mail never leaves with a hole)
-  and retried by later runs.
-- Never: agency without a trial, platform/test agencies
-  (NURTURE_EXCLUDED_SLUGS), anything beyond the J+28 calendar.
+- The final slot (J+13, historically J+28) carries Eric's booking link.
+  While NURTURE_BOOKING_URL is empty the slot is held as pending_config
+  (a mail never leaves with a hole) and retried by later runs.
+- Never: agency without an unexpired trial, platform/test agencies
+  (NURTURE_EXCLUDED_SLUGS), anything beyond its calendar and catch-up window.
 - dry_run lists what WOULD leave, writes nothing, sends nothing (the
   required first prod run: POST /jobs/trial_nurture/trigger dry_run).
 """
@@ -34,7 +36,7 @@ from sqlalchemy.orm import Session
 from shared.models.agency import Agency
 from shared.models.agent import Agent
 from shared.models.nurture import NurtureSend
-from shared.models.usage import AgencyUsageMilestone
+from shared.models.usage import AgencyUsageMilestone, UsageEvent
 from src.agencies.onboarding_email_job import first_internal_member
 from src.core.config import get_settings
 from src.core.email import send_email
@@ -46,10 +48,28 @@ logger = logging.getLogger(__name__)
 
 LogFn = Callable[[str], None]
 
-SCHEDULE: tuple[tuple[str, int], ...] = (("j7", 7), ("j21", 21), ("j28", 28))
+LEGACY_SCHEDULE: tuple[tuple[str, int], ...] = (("j7", 7), ("j21", 21), ("j28", 28))
+FIFTEEN_DAY_SCHEDULE: tuple[tuple[str, int], ...] = (("j7", 3), ("j21", 10), ("j28", 13))
 # How long past its threshold a slot may still fire (missed ticks,
 # pending_config unblocking). Beyond that it is burned as skipped.
 CATCHUP_WINDOW_DAYS = 7
+
+
+def _schedule(db: Session, agency: Agency) -> tuple[tuple[str, int], ...]:
+    """Choose from the original activation, never the mutable expiry or settings.
+
+    Missing historical metadata keeps the old calendar. Reuse ledger keys so
+    sent/skipped slots remain terminal, including after an extension or replay.
+    """
+    details = db.execute(
+        select(UsageEvent.details)
+        .where(UsageEvent.agency_id == agency.id, UsageEvent.event_type == "agency.activated")
+        .order_by(UsageEvent.created_at, UsageEvent.id)
+        .limit(1)
+    ).scalar_one_or_none()
+    if details is not None and details.get("trial_days") == 15:
+        return FIFTEEN_DAY_SCHEDULE
+    return LEGACY_SCHEDULE
 
 
 def _usage_state(db: Session, agency_id: Any) -> str:
@@ -116,6 +136,7 @@ def send_trial_nurture(db: Session, *, log: LogFn, dry_run: bool = False) -> dic
             select(Agency)
             .where(
                 Agency.trial_ends_at.is_not(None),
+                Agency.trial_ends_at > now,
                 Agency.converted_at.is_(None),
                 # DECISION (self-serve lot, 2026-07-17): the nurture texts
                 # are handcrafted FRENCH (tutoiement) — a non-FR agency
@@ -133,8 +154,9 @@ def send_trial_nurture(db: Session, *, log: LogFn, dry_run: bool = False) -> dic
     for agency in agencies:
         if agency.slug in excluded:
             continue
+        schedule = _schedule(db, agency)
         days = (now - _activation_anchor(db, agency)).days
-        if days < SCHEDULE[0][1] or days > SCHEDULE[-1][1] + CATCHUP_WINDOW_DAYS:
+        if days < schedule[0][1] or days > schedule[-1][1] + CATCHUP_WINDOW_DAYS:
             continue  # before the calendar, or past it entirely
         stats["in_scope"] += 1
 
@@ -147,7 +169,7 @@ def send_trial_nurture(db: Session, *, log: LogFn, dry_run: bool = False) -> dic
         # Open slots: due, and not already terminally decided.
         open_slots = [
             (day_key, threshold, rows.get(day_key))
-            for day_key, threshold in SCHEDULE
+            for day_key, threshold in schedule
             if days >= threshold
             and (
                 rows.get(day_key) is None

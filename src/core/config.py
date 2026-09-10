@@ -51,14 +51,14 @@ class Settings(BaseSettings):
     # (Sidney locked out at H+1, demande Eric).
     onboarding_link_expires_minutes: int = 24 * 60
     # Usage trackers bloc 1: free-trial length set by the agency wizard.
-    trial_days: int = 30
+    trial_days: int = 15
     # Nurture bloc 3 — trial emails. From AND Reply-To: Eric's personal
     # brand address (Cloudflare routes replies to his business inbox),
     # distinct from the transactional email_from. Sent via the same
     # verified Resend domain.
     nurture_from: str = "eric@nidria.com"
-    # Eric's booking link, injected into the J+28 mails. EMPTY = the
-    # J+28 slot is held back (pending_config), never sent with a hole.
+    # Eric's booking link, injected into the final nurture mails. EMPTY =
+    # the final slot is held back (pending_config), never sent with a hole.
     nurture_booking_url: str = ""
     # Never nurtured: the platform agency + internal test agencies.
     nurture_excluded_slugs: list[str] = ["nidria-demo"]

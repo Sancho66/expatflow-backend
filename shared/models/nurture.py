@@ -2,12 +2,14 @@
 
 One row per (agency, calendar slot) — THE dedup: `day_key` ("j7" /
 "j21" / "j28") is unique per agency whatever the usage state was, so a
-slot fires at most once. `mail_key` records WHICH text went out
+slot fires at most once. These are stable historical identifiers: new
+15-day trials use the same keys at J+3/J+10/J+13, without renaming old rows.
+`mail_key` records WHICH text went out
 ("s1_j21": the state evaluated at send time — trace, not dedup).
 
 `status`: SENT (mail out, `sent_at` stamped), SKIPPED (slot burned
 without a send — overtaken by a more recent due slot, or too stale),
-PENDING_CONFIG (J+28 held back while the booking URL is unset; retried
+PENDING_CONFIG (the final slot held back while the booking URL is unset; retried
 by later runs, the one non-terminal status)."""
 
 import uuid
